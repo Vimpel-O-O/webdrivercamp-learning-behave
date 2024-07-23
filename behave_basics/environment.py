@@ -16,6 +16,18 @@ def before_all(context):
     context.browser = webdriver.Chrome(service=service, options=options)
     context.element = Base(context.browser)
 
+    # make no_background off by default
+    context.no_background = False
+
+
+def before_tag(context, tag):
+    if tag == "no_background":
+        context.no_background = True
+
+
+
+def after_scenario(context):
+    context.no_background = False
 
 # def after_all(context):
     # context.browser.quit()

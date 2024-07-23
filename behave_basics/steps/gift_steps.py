@@ -10,7 +10,7 @@ def step_impl(context):
 
 @step('Navigate to {url}')
 def step_impl(context, url):
-    if 'no_background' in context.tags:
+    if context.no_background:
         return
     context.browser.get(url)
 
