@@ -1,9 +1,10 @@
 from behave import *
 import time
-import selenium.common.exceptions
+from  selenium.common.exceptions import JavascriptException, NoSuchElementException
+from selenium.webdriver.common.by import By
 
 
-@Then('Print the current url')
+@step('Print the current url')
 def step_impl(context):
     print(f"Current url - {context.browser.current_url}")
 
@@ -41,61 +42,81 @@ def step_impl(context, search_item):
 @step('Select {option} in {section} section')
 def step_impl(context, option, section):
     locator = f"//span[text()='{section}']//ancestor::div/following-sibling::ul//span[text()='{option}']"
-    (context.element.find_element(locator)).click()
+    (context.element.find_element_inlist(locator)).click()
 
 
 @step('Collect all items on the first page into {var}')
 @step('Collect all items on the first page into {var} on the {level} level')
 def step_impl(context, var, level=None):
     var = []
-    time.sleep(2)
-    for i in range(1, 25):
-        locator = f"(//section//a[@data-test='product-title'])[{i}]"
+    time.sleep(1)
+
+    # scrolling the whole page to preload all elements
+    current_scroll_position, new_height = 0, 1
+    while current_scroll_position <= new_height:
+        current_scroll_position += 8
+        context.browser.execute_script("window.scrollTo(0, {});".format(current_scroll_position))
+        new_height = context.browser.execute_script("return document.body.scrollHeight")
+
+    # grabbing all card items in one list and getting details of each
+    card_xpath = '//div[@data-test="@web/site-top-of-funnel/ProductCardWrapper"]'
+    items = context.element.find_elements_inlist(card_xpath)
+    data = []
+    for item in items:
+        title = item.find_element(By.XPATH, './/a[@data-test="product-title"]').text
+        price = item.find_element(By.XPATH, './/span[@data-test="current-price"]').text
         try:
-            context.browser.execute_script("window.scrollBy(0, 250)")
-            item_text = (context.element.find_element(locator)).text
-            var.append(item_text)
-        except AttributeError:
-            print(context.element.find_element(locator))
+            shipment = item.find_element(By.XPATH, './/span[text()="Ships free"]')
+        except NoSuchElementException:
+            shipment = None
+        data.append((title, price, shipment))
+
     if level == 'feature':
-        context.feature.collected_items = var
+        context.feature.collected_items = data
     else:
-        context.collected_items = var
+        context.collected_items = data
 
 
 @step("Verify all collected results' {param} is {condition}")
 def step_impl(context, param, condition):
-    context.browser.execute_script("window.scrollTo(0, 250)")
     if hasattr(context.feature, 'collected_items'):
-        item_list = context.feature.collected_items
+        data = context.feature.collected_items
     else:
-        item_list = context.collected_items
-    for item in item_list:
-        context.browser.execute_script("window.scrollBy(0, 250)")
+        data = context.collected_items
+
+    for title, price, shipment in data:
         try:
             if param == "price":
-                item_price = (context.element.find_element("//a[text()='" + item + "']/ancestor::div[contains(@data-test, '@web/ProductCard/')]//span[@data-test='current-price']/span")).text
-
                 if condition[0] == "<":
-                    if not float(item_price[1:]) < int(condition[-2:]):
-                        print(f"{item} does not satisfy condition - {condition}!")
+                    if not float(price[1:]) < int(condition[-3:]):
+                        print(f"{title} wiht {price} does not satisfy condition - {condition}!")
                 elif condition[0] == ">":
-                    if not float(item_price[1:]) > int(condition[-2:]):
-                        print(f"{item} does not satisfy condition - {condition}!")
+                    if not float(price[1:]) > int(condition[-3:]):
+                        print(f"{title} with {price} does not satisfy condition - {condition}!")
                 elif condition[0] == "=":
-                    if not float(item_price[1:]) == int(condition[-2:]):
-                        print(f"{item} does not satisfy condition - {condition}!")
+                    if not float(price[1:]) == int(condition[-3:]):
+                        print(f"{title} with {price} does not satisfy condition - {condition}!")
 
             elif param == "shipment":
-                if not context.element.find_element("//a[text()='" + item + "']/ancestor::div[contains(@data-test, '@web/ProductCard/')]//span[text()='Ships free']"):
-                    print(f"NOT with free shipping - \"{item}\"")
+                if shipment is None:
+                    print(f"NOT with free shipping - \"{title}\"")
 
-            # name of the product item contains ' or " which brakes ability to search it by xpath
-        except selenium.common.exceptions.JavascriptException:
-            print(f"Item contains - \" or ' in their name - \"{item}\"")
-        # since was getting <'bool' object has no attribute 'text'> error
-        except AttributeError:
-            print(f"'bool' object has no attribute 'text' related issue in searching \"{condition}\" in \"{item}\"")
         # if price shows in range (ex $4-$20)
         except ValueError:
-            print(f"Price shows in range and does not satisfy condition \"{condition}\" - \"{item}\"")
+            if str(price):
+                print(f"See price in cart for - {title}")
+            else:
+                try:
+                    biggest_cost = float(price[-5:])
+                except ValueError:
+                    biggest_cost = float(price[-2:])
+
+                if condition[0] == "<":
+                    if not biggest_cost < int(condition[-3:]):
+                        print(f"{title} with {biggest_cost} biggest price does not satisfy condition - {condition}!")
+                elif condition[0] == ">":
+                    if not biggest_cost > int(condition[-3:]):
+                        print(f"{title} with {biggest_cost} biggest price does not satisfy condition - {condition}!")
+                elif condition[0] == "=":
+                    if not biggest_cost == int(condition[-3:]):
+                        print(f"{title} with {biggest_cost} biggest price does not satisfy condition - {condition}!")

@@ -25,7 +25,7 @@ def before_tag(context, tag):
         context.no_background = True
 
 
-def after_scenario(context):
+def after_scenario(context, scenario):
     context.no_background = False
 
 # def after_all(context):
